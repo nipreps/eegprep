@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "eegniprep"
+version = "0.1.0"
+description = "NiPreps-style BIDS App scaffold for EEG preprocessing"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{name = "EEGPrep contributors"}]
+license = {text = "MIT"}
+dependencies = [
+  "mne>=1.8",
+  "mne-bids>=0.15",
+  "pybids>=0.17",
+  "numpy>=1.24",
+]
+
+[project.scripts]
+eegprep = "eegprep.cli.run:main"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+include = ["eegprep*"]
