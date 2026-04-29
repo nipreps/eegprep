@@ -3,6 +3,9 @@
 import json
 from pathlib import Path
 
+import matplotlib.pyplot as plt
+import mne
+
 from eegprep.config import RunConfig
 from eegprep.workflows.eeg.features import FeatureResult
 from eegprep.workflows.eeg.preprocess import PreprocResult
@@ -75,3 +78,16 @@ def write_subject_stub_outputs(
 
     out_file = subj_dir / f"sub-{subject_id}_desc-qc_metrics.json"
     out_file.write_text(json.dumps(metrics, indent=2), encoding="utf-8")
+
+    preproc_raw_file = subj_dir / f"sub-{subject_id}_desc-preproc_eeg.fif"
+    pre.cleaned_raw.save(preproc_raw_file, overwrite=True)
+
+    post_psd = pre.cleaned_raw.compute_psd(method="welch", picks="eeg")
+    psd_fig = post_psd.plot(show=False)
+    psd_fig.savefig(subj_dir / f"sub-{subject_id}_desc-postproc_psd.png", dpi=150, bbox_inches="tight")
+
+    report = mne.Report(title=f"EEGPrep subject {subject_id}")
+    report.add_raw(pre.cleaned_raw, title="Preprocessed raw", psd=False)
+    report.add_figure(psd_fig, title="Post-processing PSD")
+    report.save(subj_dir / f"sub-{subject_id}_desc-qc_report.html", overwrite=True, open_browser=False)
+    plt.close(psd_fig)
