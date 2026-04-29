@@ -48,6 +48,11 @@ def write_subject_stub_outputs(
             "ReferenceChannels": pre.reference_channels,
             "NumBlinks": pre.num_blinks,
             "NumCardiac": pre.num_cardiac,
+            "NumCardiacRemovedNearBlink": pre.num_cardiac_removed_near_blink,
+            "NumCardiacAfterBlinkCensor": pre.num_cardiac_after_blink_censor,
+            "BlinkOnsetsSec": pre.blink_onsets_sec,
+            "CardiacOnsetsSec": pre.cardiac_onsets_sec,
+            "CardiacOnsetsAfterBlinkCensorSec": pre.cardiac_onsets_after_blink_censor_sec,
             "BadSegments": {
                 "Method": "peak_to_peak",
                 "WindowLength": 1.0,
@@ -64,6 +69,11 @@ def write_subject_stub_outputs(
         "StdPerChannelPre": qc.std_per_channel,
         "AvgPerChannelPost": pre.avg_per_channel_post,
         "StdPerChannelPost": pre.std_per_channel_post,
+        "NoiseCovariancePerCensor": {
+            "Estimator": "numpy_cov_trace",
+            "TracePerCensor": pre.noise_cov_trace_per_censor,
+            "Count": len(pre.noise_cov_trace_per_censor),
+        },
     }
     if features is not None:
         metrics["Features"] = {
@@ -92,6 +102,15 @@ def write_subject_stub_outputs(
     report = mne.Report(title=f"EEGPrep subject {subject_id}")
     report.add_raw(pre.cleaned_raw, title="Preprocessed raw", psd=False)
     report.add_figure(psd_fig, title="Post-processing PSD")
+    if pre.noise_cov_trace_per_censor:
+        fig_cov, ax = plt.subplots(figsize=(8, 4))
+        ax.plot(pre.noise_cov_trace_per_censor, color="#4C956C")
+        ax.set_xlabel("Censor index")
+        ax.set_ylabel("Covariance trace")
+        ax.set_title("Noise covariance estimate per censor")
+        fig_cov.tight_layout()
+        report.add_figure(fig_cov, title="Noise covariance per censor")
+        plt.close(fig_cov)
     if pre.notch_performance_db:
         freqs = list(pre.notch_performance_db.keys())
         atten = [pre.notch_performance_db[f] for f in freqs]

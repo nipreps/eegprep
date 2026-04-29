@@ -21,6 +21,7 @@ class PreprocParams:
     bad_segment_threshold_uv: float = 150.0
     psd_window_sec: float = 4.0
     psd_overlap_percent: float = 50.0
+    remove_cardiac_near_blink_sec: float = 0.25
 
 
 @dataclass(slots=True)
@@ -31,10 +32,16 @@ class PreprocResult:
     notch_hz: list[float]
     num_blinks: int
     num_cardiac: int
+    num_cardiac_removed_near_blink: int
+    num_cardiac_after_blink_censor: int
     num_bad_segments: int
     bad_segment_onsets_sec: list[float]
+    blink_onsets_sec: list[float]
+    cardiac_onsets_sec: list[float]
+    cardiac_onsets_after_blink_censor_sec: list[float]
     avg_per_channel_post: list[float]
     std_per_channel_post: list[float]
+    noise_cov_trace_per_censor: list[float]
     post_qc: QCResult
     notch_performance_db: dict[str, float]
     reference_channels: list[str]
@@ -94,17 +101,33 @@ def run_preprocess(raw: mne.io.BaseRaw, cfg: RunConfig, qc_result: QCResult, par
 
     num_blinks = 0
     num_cardiac = 0
+    num_cardiac_removed_near_blink = 0
+    blink_onsets_sec: list[float] = []
+    cardiac_onsets_sec: list[float] = []
+    cardiac_onsets_after_blink_censor_sec: list[float] = []
 
     # artifact events and SSP
     if params.eog_channel:
         eog_events = mne.preprocessing.find_eog_events(pre, ch_name=params.eog_channel, verbose=False)
         num_blinks = int(eog_events.shape[0])
+        blink_onsets_sec = [float(evt[0] / pre.info["sfreq"]) for evt in eog_events]
         eog_projs, _ = mne.preprocessing.compute_proj_eog(pre, ch_name=params.eog_channel, n_eeg=params.eog_proj_count, verbose=False)
         pre.add_proj(eog_projs)
 
     if params.ecg_channel:
         ecg_events, _, _ = mne.preprocessing.find_ecg_events(pre, ch_name=params.ecg_channel, verbose=False)
         num_cardiac = int(ecg_events.shape[0])
+        cardiac_onsets_sec = [float(evt[0] / pre.info["sfreq"]) for evt in ecg_events]
+        cardiac_onsets_after_blink_censor_sec = list(cardiac_onsets_sec)
+        if blink_onsets_sec:
+            keep_cardiac: list[float] = []
+            for c_t in cardiac_onsets_sec:
+                near_blink = any(abs(c_t - b_t) <= params.remove_cardiac_near_blink_sec for b_t in blink_onsets_sec)
+                if near_blink:
+                    num_cardiac_removed_near_blink += 1
+                else:
+                    keep_cardiac.append(c_t)
+            cardiac_onsets_after_blink_censor_sec = keep_cardiac
         ecg_projs, _ = mne.preprocessing.compute_proj_ecg(pre, ch_name=params.ecg_channel, n_eeg=params.ecg_proj_count, verbose=False)
         pre.add_proj(ecg_projs)
 
@@ -121,6 +144,10 @@ def run_preprocess(raw: mne.io.BaseRaw, cfg: RunConfig, qc_result: QCResult, par
     concat = np.transpose(ep_data, (1, 0, 2)).reshape(ep_data.shape[1], -1)
     avg_post = concat.mean(axis=1)
     std_post = concat.std(axis=1, ddof=0)
+    noise_cov_trace_per_censor: list[float] = []
+    for epoch in ep_data:
+        cov = np.cov(epoch, bias=False)
+        noise_cov_trace_per_censor.append(float(np.trace(cov)))
 
     # post QC PSD/peaks
     post_qc = run_qc(pre, QCParams())
@@ -142,10 +169,16 @@ def run_preprocess(raw: mne.io.BaseRaw, cfg: RunConfig, qc_result: QCResult, par
         notch_hz=notch_hz,
         num_blinks=num_blinks,
         num_cardiac=num_cardiac,
+        num_cardiac_removed_near_blink=num_cardiac_removed_near_blink,
+        num_cardiac_after_blink_censor=len(cardiac_onsets_after_blink_censor_sec),
         num_bad_segments=len(onsets),
         bad_segment_onsets_sec=[float(x) for x in onsets],
+        blink_onsets_sec=blink_onsets_sec,
+        cardiac_onsets_sec=cardiac_onsets_sec,
+        cardiac_onsets_after_blink_censor_sec=cardiac_onsets_after_blink_censor_sec,
         avg_per_channel_post=[float(x) for x in avg_post],
         std_per_channel_post=[float(x) for x in std_post],
+        noise_cov_trace_per_censor=noise_cov_trace_per_censor,
         post_qc=post_qc,
         notch_performance_db=notch_perf,
         reference_channels=reference_channels,
