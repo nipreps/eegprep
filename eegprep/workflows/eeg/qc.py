@@ -92,7 +92,14 @@ def run_qc(raw: mne.io.BaseRaw, params: QCParams | None = None) -> QCResult:
     # MNE requires n_overlap < n_per_seg. Clamp to a safe range to avoid
     # runtime failures when users provide (or rounding produces) 100% overlap.
     n_overlap = max(0, min(requested_overlap, n_per_seg - 1))
-    psd = raw.compute_psd(method="welch", n_per_seg=n_per_seg, n_overlap=n_overlap)
+    # Ensure n_fft is at least n_per_seg so MNE does not internally shrink
+    # n_per_seg (which can otherwise make n_overlap invalid after validation).
+    psd = raw.compute_psd(
+        method="welch",
+        n_fft=n_per_seg,
+        n_per_seg=n_per_seg,
+        n_overlap=n_overlap,
+    )
     freqs = psd.freqs
     psd_data = psd.get_data()
     mean_psd = psd_data.mean(axis=0)
