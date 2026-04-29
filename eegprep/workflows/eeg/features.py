@@ -33,7 +33,9 @@ def _bandpower_from_psd(freqs: np.ndarray, psd: np.ndarray, bands: dict[str, tup
 
 def run_features(raw: mne.io.BaseRaw, win_length: float = 4.0, win_overlap_percent: float = 50.0) -> FeatureResult:
     sfreq = raw.info["sfreq"]
+    n_times = raw.n_times
     n_per_seg = int(round(win_length * sfreq))
+    n_per_seg = min(n_per_seg, n_times)
     n_overlap = int(round(n_per_seg * (win_overlap_percent / 100.0)))
     psd = raw.compute_psd(method="welch", n_per_seg=n_per_seg, n_overlap=n_overlap, picks="eeg")
     freqs = psd.freqs
