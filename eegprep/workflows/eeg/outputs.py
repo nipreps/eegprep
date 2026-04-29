@@ -104,10 +104,13 @@ def write_subject_stub_outputs(
         report.add_figure(fig_notch, title="Notch filter performance")
         plt.close(fig_notch)
 
-    fig_ref = pre.cleaned_raw.copy().pick("eeg").plot_sensors(show=False)
-    ref_title = f"Reference montage ({', '.join(pre.reference_channels)})"
-    report.add_figure(fig_ref, title=ref_title)
-    plt.close(fig_ref)
+    eeg_for_plot = pre.cleaned_raw.copy().pick("eeg")
+    has_positions = any(np.isfinite(ch["loc"][:3]).any() and not np.allclose(ch["loc"][:3], 0.0) for ch in eeg_for_plot.info["chs"])
+    if has_positions:
+        fig_ref = eeg_for_plot.plot_sensors(show=False)
+        ref_title = f"Reference montage ({', '.join(pre.reference_channels)})"
+        report.add_figure(fig_ref, title=ref_title)
+        plt.close(fig_ref)
 
     if pre.reference == "average":
         ref_weights = np.ones(len(pre.cleaned_raw.ch_names), dtype=float) / max(1, len(pre.cleaned_raw.ch_names))
