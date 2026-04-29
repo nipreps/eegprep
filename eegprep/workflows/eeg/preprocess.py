@@ -36,6 +36,7 @@ class PreprocResult:
     avg_per_channel_post: list[float]
     std_per_channel_post: list[float]
     post_qc: QCResult
+    cleaned_raw: mne.io.BaseRaw
 
 
 def _resolve_notch(cfg: RunConfig, qc_result: QCResult) -> list[float]:
@@ -128,4 +129,5 @@ def run_preprocess(raw: mne.io.BaseRaw, cfg: RunConfig, qc_result: QCResult, par
         avg_per_channel_post=[float(x) for x in avg_post],
         std_per_channel_post=[float(x) for x in std_post],
         post_qc=post_qc,
+        cleaned_raw=pre,
     )
