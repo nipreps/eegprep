@@ -86,7 +86,10 @@ def run_qc(raw: mne.io.BaseRaw, params: QCParams | None = None) -> QCResult:
     # 4) Welch PSD + peaks (mean across channels)
     sfreq = raw.info["sfreq"]
     n_per_seg = max(8, int(round(params.psd_window_sec * sfreq)))
-    n_overlap = int(round(n_per_seg * (params.psd_overlap_percent / 100.0)))
+    requested_overlap = int(round(n_per_seg * (params.psd_overlap_percent / 100.0)))
+    # MNE requires n_overlap < n_per_seg. Clamp to a safe range to avoid
+    # runtime failures when users provide (or rounding produces) 100% overlap.
+    n_overlap = max(0, min(requested_overlap, n_per_seg - 1))
     psd = raw.compute_psd(method="welch", n_per_seg=n_per_seg, n_overlap=n_overlap)
     freqs = psd.freqs
     psd_data = psd.get_data()
