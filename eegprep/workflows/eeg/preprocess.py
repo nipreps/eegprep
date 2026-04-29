@@ -36,6 +36,8 @@ class PreprocResult:
     avg_per_channel_post: list[float]
     std_per_channel_post: list[float]
     post_qc: QCResult
+    notch_performance_db: dict[str, float]
+    reference_channels: list[str]
     cleaned_raw: mne.io.BaseRaw
 
 
@@ -73,16 +75,22 @@ def run_preprocess(raw: mne.io.BaseRaw, cfg: RunConfig, qc_result: QCResult, par
 
     # notch + high/low-pass
     notch_hz = _resolve_notch(cfg, qc_result)
+    pre_psd = pre.compute_psd(method="welch", picks="eeg")
+    pre_freqs = pre_psd.freqs
+    pre_mean_psd = pre_psd.get_data().mean(axis=0)
     pre.notch_filter(freqs=notch_hz, picks="eeg")
     h_freq = cfg.low_pass if (cfg.low_pass and cfg.low_pass > 0) else None
     pre.filter(l_freq=cfg.high_pass, h_freq=h_freq, picks="eeg")
 
     # reference behavior modeled after MATLAB: empty/average => average
     ref = cfg.eeg_reference or "average"
+    reference_channels: list[str]
     if ref.lower() == "average":
         pre.set_eeg_reference(ref_channels="average")
+        reference_channels = ["average"]
     else:
         pre.set_eeg_reference(ref_channels=[ref])
+        reference_channels = [ref]
 
     num_blinks = 0
     num_cardiac = 0
@@ -116,6 +124,16 @@ def run_preprocess(raw: mne.io.BaseRaw, cfg: RunConfig, qc_result: QCResult, par
 
     # post QC PSD/peaks
     post_qc = run_qc(pre, QCParams())
+    post_psd = pre.compute_psd(method="welch", picks="eeg")
+    post_freqs = post_psd.freqs
+    post_mean_psd = post_psd.get_data().mean(axis=0)
+    notch_perf: dict[str, float] = {}
+    for freq in notch_hz:
+        pre_idx = int(np.argmin(np.abs(pre_freqs - freq)))
+        post_idx = int(np.argmin(np.abs(post_freqs - freq)))
+        before = max(float(pre_mean_psd[pre_idx]), np.finfo(float).eps)
+        after = max(float(post_mean_psd[post_idx]), np.finfo(float).eps)
+        notch_perf[f"{float(freq):g}Hz"] = float(10.0 * np.log10(before / after))
 
     return PreprocResult(
         reference=ref,
@@ -129,5 +147,7 @@ def run_preprocess(raw: mne.io.BaseRaw, cfg: RunConfig, qc_result: QCResult, par
         avg_per_channel_post=[float(x) for x in avg_post],
         std_per_channel_post=[float(x) for x in std_post],
         post_qc=post_qc,
+        notch_performance_db=notch_perf,
+        reference_channels=reference_channels,
         cleaned_raw=pre,
     )

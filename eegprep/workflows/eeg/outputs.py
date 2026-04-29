@@ -5,6 +5,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import mne
+import numpy as np
 
 from eegprep.config import RunConfig
 from eegprep.workflows.eeg.features import FeatureResult
@@ -40,9 +41,11 @@ def write_subject_stub_outputs(
         },
         "Preprocessing": {
             "NotchFrequencies": pre.notch_hz,
+            "NotchPerformanceDb": pre.notch_performance_db,
             "HighPassHz": pre.high_pass_hz,
             "LowPassHz": pre.low_pass_hz,
             "Reference": pre.reference,
+            "ReferenceChannels": pre.reference_channels,
             "NumBlinks": pre.num_blinks,
             "NumCardiac": pre.num_cardiac,
             "BadSegments": {
@@ -89,5 +92,33 @@ def write_subject_stub_outputs(
     report = mne.Report(title=f"EEGPrep subject {subject_id}")
     report.add_raw(pre.cleaned_raw, title="Preprocessed raw", psd=False)
     report.add_figure(psd_fig, title="Post-processing PSD")
+    if pre.notch_performance_db:
+        freqs = list(pre.notch_performance_db.keys())
+        atten = [pre.notch_performance_db[f] for f in freqs]
+        fig_notch, ax = plt.subplots(figsize=(8, 4))
+        ax.bar(freqs, atten, color="#3A7CA5")
+        ax.axhline(0.0, color="black", linewidth=0.8)
+        ax.set_ylabel("Attenuation (dB)")
+        ax.set_title("Notch filter performance")
+        fig_notch.tight_layout()
+        report.add_figure(fig_notch, title="Notch filter performance")
+        plt.close(fig_notch)
+
+    fig_ref = pre.cleaned_raw.copy().pick("eeg").plot_sensors(show=False)
+    ref_title = f"Reference montage ({', '.join(pre.reference_channels)})"
+    report.add_figure(fig_ref, title=ref_title)
+    plt.close(fig_ref)
+
+    if pre.reference == "average":
+        ref_weights = np.ones(len(pre.cleaned_raw.ch_names), dtype=float) / max(1, len(pre.cleaned_raw.ch_names))
+        fig_avg_ref, ax = plt.subplots(figsize=(8, 3))
+        ax.plot(ref_weights)
+        ax.set_ylim(0, max(ref_weights) * 1.2)
+        ax.set_title("Average reference weights")
+        ax.set_xlabel("Channel index")
+        ax.set_ylabel("Weight")
+        fig_avg_ref.tight_layout()
+        report.add_figure(fig_avg_ref, title="Reference montage weights")
+        plt.close(fig_avg_ref)
     report.save(subj_dir / f"sub-{subject_id}_desc-qc_report.html", overwrite=True, open_browser=False)
     plt.close(psd_fig)
