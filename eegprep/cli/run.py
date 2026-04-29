@@ -1,17 +1,26 @@
 """Entrypoint for EEGPrep CLI."""
 
 from eegprep.cli.parser import build_parser
+from eegprep.cli.participants import discover_participants
 from eegprep.config import RunConfig
 from eegprep.workflows.base import init_eegprep_wf
 
 
 def main() -> None:
     args = build_parser().parse_args()
+    participant_labels = args.participant_label or discover_participants(args.bids_root)
+    if not participant_labels:
+        msg = (
+            "No participants were found. Pass --participant-label or add sub-* "
+            f"directories under {args.bids_root}."
+        )
+        raise SystemExit(msg)
+
     cfg = RunConfig(
         bids_root=args.bids_root,
         derivatives_root=args.derivatives_root,
         analysis_level=args.analysis_level,
-        participant_labels=args.participant_label,
+        participant_labels=participant_labels,
         task=args.task,
         session_label=args.session_label,
         work_dir=args.work_dir,
